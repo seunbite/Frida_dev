@@ -413,6 +413,9 @@ class VLMPainter(Painter):
                 # Parse and map color to palette
                 color_rgb = self._parse_color(stroke_params['color'])
                 mapped_color = self._map_to_palette_color(color_rgb)
+                # if color is white, print the color_rgb
+                if mapped_color == torch.tensor([1.0, 1.0, 1.0]):
+                    print(color_rgb)
                 stroke.color_transform = torch.nn.Parameter(mapped_color)
                 
                 stroke.stroke_length = torch.nn.Parameter(torch.tensor(length).float())
