@@ -1,3 +1,5 @@
+*.zip
+*.npy
 *.pyc
 *.out.tfevents.*
 *.mp4

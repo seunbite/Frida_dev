@@ -356,7 +356,10 @@ class Franka(Robot, object):
         
 class SimulatedRobot(Robot, object):
     def __init__(self, debug=True):
-        pass
+        self.debug = debug
+        self.canvas = None
+        self.current_color = np.array([0, 0, 0])  # Default black color
+        self.brush_size = 10  # Default brush size
 
     def good_morning_robot(self):
         pass
@@ -364,8 +367,52 @@ class SimulatedRobot(Robot, object):
     def good_night_robot(self):
         pass
 
-    def go_to_cartesian_pose(self, position, orientation):
-        pass
+    def set_brush_color(self, color):
+        self.current_color = np.array(color)
+
+    def set_brush_size(self, size):
+        self.brush_size = size
+
+    def go_to_cartesian_pose(self, positions, orientations):
+        if not isinstance(positions[0], list):
+            positions = [positions]
+        
+        # Draw on the simulated canvas
+        if self.canvas is not None:
+            import cv2
+            import numpy as np
+            
+            # Convert global coordinates to canvas coordinates
+            h, w = self.canvas.shape[:2]
+            prev_x, prev_y = None, None
+            
+            for pos in positions:
+                x, y = pos[0], pos[1]
+                # Map x,y from global coordinates to canvas coordinates
+                canvas_x = int((x + 0.5) * w)
+                canvas_y = int((1.0 - (y + 0.5)) * h)
+                
+                # Draw a brush stroke
+                if 0 <= canvas_x < w and 0 <= canvas_y < h:
+                    # If we have a previous point, draw a line between them
+                    if prev_x is not None and prev_y is not None:
+                        cv2.line(self.canvas, 
+                                (prev_x, prev_y), 
+                                (canvas_x, canvas_y), 
+                                self.current_color.tolist(), 
+                                thickness=self.brush_size, 
+                                lineType=cv2.LINE_AA)
+                    # Draw a circle at the current point
+                    cv2.circle(self.canvas, 
+                             (canvas_x, canvas_y), 
+                             self.brush_size // 2, 
+                             self.current_color.tolist(), 
+                             -1, 
+                             lineType=cv2.LINE_AA)
+                    
+                prev_x, prev_y = canvas_x, canvas_y
+        
+        return True
 
 
 

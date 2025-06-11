@@ -107,10 +107,12 @@ class WebCam():
     
     def get_canvas_tensor(self, h=None, w=None):
         canvas = self.get_canvas()
+        # Convert to float and normalize to 0-1 range
+        canvas = canvas.astype(np.float32) / 255.0
+        # Convert to tensor and add batch dimension
         canvas = torch.from_numpy(canvas).permute(2,0,1).unsqueeze(0)
         if h is not None and w is not None:
             canvas = Resize((h,w), antialias=True)(canvas)
-        canvas = torch.cat([canvas, torch.ones(1,1,canvas.shape[2],canvas.shape[3])], dim=1)
         return canvas
 
     def calibrate_canvas(self, use_cache=False):
@@ -220,14 +222,47 @@ class SimulatedWebCam():
         w_h_ratio = float(opt.CANVAS_WIDTH_M) / opt.CANVAS_HEIGHT_M
         h = 1024
         self.canvas = np.ones((h,int(h * w_h_ratio),3), dtype=np.float32) * 255.
+            
     def get_canvas(self):
         return self.canvas
+        
     def get_canvas_tensor(self, h=None, w=None):
         canvas = self.get_canvas()
+        # Convert to float and normalize to 0-1 range
+        canvas = canvas.astype(np.float32) / 255.0
+        # Convert to tensor and add batch dimension
         canvas = torch.from_numpy(canvas).permute(2,0,1).unsqueeze(0)
         if h is not None and w is not None:
             canvas = Resize((h,w), antialias=True)(canvas)
-        canvas = torch.cat([canvas, torch.ones(1,1,h,w)], dim=1)
         return canvas
+        
+    def get_updated_simulation_canvas(self, h=None, w=None, stroke=None):
+        # Get the current canvas state
+        canvas = self.get_canvas_tensor(h, w)
+        device = canvas.device
+        
+        if stroke is not None:
+            # Generate the stroke image
+            stroke_img = stroke(h, w, self.opt.param2img)
+            
+            # Move stroke image to the same device as canvas
+            stroke_img = stroke_img.to(device)
+            
+            # Composite the stroke onto the canvas
+            # Use alpha blending: new = alpha * stroke + (1 - alpha) * canvas
+            alpha = stroke_img[:, 3:4]  # Get alpha channel
+            stroke_rgb = stroke_img[:, :3]  # Get RGB channels
+            
+            canvas = canvas * (1 - alpha) + stroke_rgb * alpha
+            
+            # Update the internal canvas state (at original resolution)
+            with torch.no_grad():
+                updated_canvas = canvas.detach().cpu()
+                if h != self.canvas.shape[0] or w != self.canvas.shape[1]:
+                    updated_canvas = Resize((self.canvas.shape[0], self.canvas.shape[1]), antialias=True)(updated_canvas)
+                self.canvas = (updated_canvas[0].permute(1, 2, 0).numpy() * 255).astype(np.float32)
+        
+        return canvas
+        
     def calibrate_canvas(self, use_cache=False):
         pass

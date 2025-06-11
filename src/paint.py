@@ -12,9 +12,13 @@ import datetime
 import numpy as np
 
 import torch
-from paint_utils3 import canvas_to_global_coordinates, get_colors, nearest_color, random_init_painting, save_colors, show_img
+from paint_utils3 import canvas_to_global_coordinates, get_colors, nearest_color, random_init_painting, save_colors, show_img, format_img
+
+import matplotlib
+matplotlib.use('TkAgg')  # or try 'Qt5Agg'
 
 from painter import Painter
+from painter_vlm import VLMPainter
 from options import Options
 # from paint_planner import paint_planner_new
 
@@ -31,8 +35,15 @@ if __name__ == '__main__':
     run_name = '' + date_and_time.strftime("%m_%d__%H_%M_%S")
     opt.writer = TensorBoard('{}/{}'.format(opt.tensorboard_dir, run_name))
     opt.writer.add_text('args', str(sys.argv), 0)
+    if opt.simulate_type == 'original':
+        print("Using original painter")
+        painter = Painter(opt)
+    elif opt.simulate_type == 'vlm':
+        print("Using vlm painter")
+        painter = VLMPainter(opt)
+    else:
+        raise ValueError(f"Invalid simulate_type: {opt.simulate_type}")
 
-    painter = Painter(opt)
     opt = painter.opt # This necessary?
 
     if not opt.simulate:
@@ -49,6 +60,11 @@ if __name__ == '__main__':
     h_render = int(opt.render_height)
     opt.w_render, opt.h_render = w_render, h_render
 
+    # Initialize param2img for simulation
+    if opt.simulate:
+        from param2stroke import get_param2img
+        opt.param2img = get_param2img(opt)
+
     consecutive_paints = 0
     consecutive_strokes_no_clean = 0
     curr_color = -1
@@ -59,7 +75,7 @@ if __name__ == '__main__':
                 n_colors=opt.n_colors).to(device)
         opt.writer.add_image('paint_colors/using_colors_from_input', save_colors(color_palette), 0)
 
-    current_canvas = painter.camera.get_canvas_tensor(h=h_render,w=w_render).to(device) / 255.
+    current_canvas = painter.camera.get_canvas_tensor(h=h_render,w=w_render).to(device)
 
     load_objectives_data(opt)
 
@@ -79,14 +95,12 @@ if __name__ == '__main__':
 
 
     strokes_per_adaptation = int(len(painting) / opt.num_adaptations)
-    # for adaptation_it in range(opt.num_adaptations):
     while len(painting) > 0:
         ################################
         ### Execute some of the plan ###
         ################################
         for stroke_ind in range(min(len(painting),strokes_per_adaptation)):
             stroke = painting.pop()            
-            
             # Clean paint brush and/or get more paint
             if not painter.opt.ink:
                 color_ind, _ = nearest_color(stroke.color_transform.detach().cpu().numpy(), 
@@ -102,20 +116,40 @@ if __name__ == '__main__':
                     painter.get_paint(color_ind)
                     consecutive_paints = 0
 
+        
             # Convert the canvas proportion coordinates to meters from robot
             x, y = stroke.transformation.xt.item()*0.5+0.5, stroke.transformation.yt.item()*0.5+0.5
             y = 1-y
             x, y = min(max(x,0.),1.), min(max(y,0.),1.) #safety
             x_glob, y_glob,_ = canvas_to_global_coordinates(x,y,None,painter.opt)
 
-            # Runnit
+            # Set brush color and size for simulation
+            if painter.opt.simulate:
+                color = stroke.color_transform.detach().cpu().numpy() * 255
+                painter.robot.set_brush_color(color)
+                # Scale brush size based on stroke_z (0-1)
+                brush_size = int(5 + stroke.stroke_z.item() * 15)  # Map 0-1 to 5-20 pixels
+                painter.robot.set_brush_size(brush_size)
+
+            # Execute the stroke
             stroke.execute(painter, x_glob, y_glob, stroke.transformation.a.item())
+
+            if opt.simulate: # no actual painting, so update the canvas
+                current_canvas = painter.camera.get_updated_simulation_canvas(h=h_render,w=w_render, stroke=stroke).to(device)
+            else:
+                current_canvas = painter.camera.get_canvas_tensor(h=h_render,w=w_render).to(device)
+            
+            # Just use RGB channels for visualization
+            rgb = current_canvas[0, :3].detach().cpu().numpy().transpose(1, 2, 0)  # HWC format
+            rgb = np.clip(rgb, 0, 1)  # Ensure values are in [0,1]
+
+            opt.writer.add_image('progressive_painting/execution', rgb, stroke_ind)
 
         #######################
         ### Update the plan ###
         #######################
         painter.to_neutral()
-        current_canvas = painter.camera.get_canvas_tensor(h=h_render,w=w_render).to(device) / 255.
+        current_canvas = painter.camera.get_canvas_tensor(h=h_render,w=w_render).to(device)
         painting.background_img = current_canvas
         painting, _ = optimize_painting(opt, painting, 
                     optim_iter=opt.optim_iter, color_palette=color_palette)

@@ -76,6 +76,8 @@ class Painter():
                     self.camera = WebCam(opt)
                 else:
                     self.camera = SimulatedWebCam(opt)
+                    # Share the canvas between simulated camera and robot
+                    self.robot.canvas = self.camera.canvas
                 break
             except Exception as e:
                 import traceback

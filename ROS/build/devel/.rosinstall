@@ -1,0 +1,2 @@
+- setup-file:
+    local-name: /root/Frida/Ros/build/devel/setup.sh

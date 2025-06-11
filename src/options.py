@@ -34,6 +34,7 @@ class Options(object):
         parser.add_argument("--cache_dir", type=str,
             default='./caches/cache_6_6_cvpr', help='Where to store cached files.')
         parser.add_argument('--simulate', action='store_true', help="Don't execute. Just plan without a robot. Requires already cached data.")
+        parser.add_argument('--simulate_type', type=str, default='original', help="How to simulate a painting. [original|vlm]")
         parser.add_argument('--ink', action='store_true')
         parser.add_argument('--paint_from_image', action='store_true')
 

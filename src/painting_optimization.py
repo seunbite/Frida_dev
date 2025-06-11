@@ -45,11 +45,11 @@ def log_progress(painting, opt, log_freq=5, force_log=False, title='plan'):
         with torch.no_grad():
             #np_painting = painting(h,w, use_alpha=False).detach().cpu().numpy()[0].transpose(1,2,0)
             #opt.writer.add_image('images/{}'.format(title), np.clip(np_painting, a_min=0, a_max=1), local_it)
-            p = painting(opt.h_render,opt.w_render, use_alpha=False)
-            p = format_img(p)
-            opt.writer.add_image('images/{}'.format(title), p, local_it)
-            
-            plans.append((p*255.).astype(np.uint8))
+            paint = painting(opt.h_render,opt.w_render, use_alpha=False)
+            paint = format_img(paint)
+            opt.writer.add_image('images/{}'.format(title), paint, local_it)
+
+            plans.append((paint*255.).astype(np.uint8))
 
 def parse_objective(objective_type, objective_data, p, weight=1.0, num_augs=30):
     ''' p is the rendered painting '''
